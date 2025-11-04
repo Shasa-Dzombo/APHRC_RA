@@ -29,7 +29,7 @@ class Settings:
         
         # Server settings
         self.host: str = os.getenv("HOST", "localhost")
-        self.port: int = int(os.getenv("PORT", "8000"))
+        self.port: int = int(os.getenv("PORT", "8002"))
         self.reload: bool = os.getenv("RELOAD", "True").lower() == "true"
         self.factory: bool = True
         self.environment: str = os.getenv("ENVIRONMENT", "development")

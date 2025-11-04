@@ -421,20 +421,16 @@ async def get_ai_research_insights(
 ):
     """
     Provide AI-generated insights and preliminary answers for research questions.
+    Analyzes data gaps by comparing research questions with available database information.
     
     This endpoint:
-    1. Uses identified data gaps to understand limitations
-    2. Searches web sources for relevant information
-    3. Generates preliminary answers and insights
-    4. Provides citations and confidence levels
+    1. Checks database for available data related to research questions
+    2. Identifies gaps between required and available data
+    3. Searches web sources for relevant information
+    4. Generates insights and preliminary answers
     5. Suggests areas for further research
     
-    Returns a structured response with:
-    - Timestamp of analysis
-    - Important disclaimers
-    - AI-generated insights
-    - Data gap analysis
-    - Methodology notes
+    Returns structured insights with data gap analysis and methodology notes.
     """
     try:
         logger.info(f"Generating AI research insights for session {session_id}")
@@ -442,18 +438,42 @@ async def get_ai_research_insights(
         if "questions" not in session.data:
             raise HTTPException(status_code=400, detail="Generate questions first")
             
-        if "data_gaps" not in session.data:
-            # First analyze data gaps by calling the gaps endpoint
-            questions = session.data["questions"]
-            gaps_response = await analyze_gaps(session_id, session)
-            session.data["data_gaps"] = gaps_response  # analyze_gaps already updates the session
-            
-        # Get the LLM instance with research-focused system prompt
-        llm = get_llm(temperature=0.7)  # Slightly higher temperature for more comprehensive responses
+        # Get database schema for data availability check
+        db_schema = await parse_database_schema()
         
-        # Prepare context from questions and gaps
-        main_questions = session.data["questions"].get("main_questions", [])
-        data_gaps = session.data["data_gaps"]
+        # Extract questions and analyze data availability
+        questions = session.data["questions"]
+        main_questions = questions.get("main_questions", [])
+        if not main_questions:
+            raise HTTPException(status_code=400, detail="No research questions found")
+            
+        # Analyze gaps against database schema
+        data_gaps = []
+        source_data = session.data.get("source", {})
+        
+        if session.research_type == "dataset":
+            table_name = source_data.get("table_name")
+            if table_name:
+                # Get detailed table information
+                table_details = await get_table_details(table_name)
+                available_vars = set(table_details.get("columns", {}).keys())
+                
+                # Check each question against available data
+                for idx, question in enumerate(main_questions):
+                    question_text = question.get("question", "")
+                    required_vars = extract_required_variables(question_text)
+                    missing_vars = required_vars - available_vars
+                    
+                    if missing_vars:
+                        data_gaps.append({
+                            "question_index": idx,
+                            "question": question_text,
+                            "missing_variables": list(missing_vars),
+                            "available_alternatives": suggest_data_sources(missing_vars)
+                        })
+        
+        # Get the LLM instance with research-focused system prompt
+        llm = get_llm(temperature=0.7)
         
             # Search the web for relevant information
         all_web_results = []
@@ -500,67 +520,7 @@ async def get_ai_research_insights(
             status_code=500,
             detail=f"Error generating AI insights: {str(e)}"
         )
-    # gaps = []
-    # try:
-    #     main_question = questions.get("main_question", "")
-    #     sub_questions = questions.get("sub_questions", [])
-        
-    #     # Get only main questions
-    #     main_questions = []
-        
-    #     # Handle new format with multiple main questions
-    #     if isinstance(questions.get("main_questions"), list):
-    #         for idx, main_q in enumerate(questions["main_questions"]):
-    #             main_questions.append({
-    #                 "question": main_q,
-    #                 "type": "main",
-    #                 "index": idx,
-    #                 "sub_questions": questions.get("sub_questions", {}).get(idx, [])
-    #             })
-    #     else:
-    #         # Legacy format support
-    #         if questions.get("main_question"):
-    #             main_questions.append({
-    #                 "question": questions.get("main_question"),
-    #                 "type": "main",
-    #                 "index": 0,
-    #                 "sub_questions": questions.get("sub_questions", [])
-    #             })
-
-    #     # Analyze gaps for each question
-    #     if source_type == "dataset":
-    #         available_vars = set(source_data.get("variables", []))
-    #         for q_info in main_questions:
-    #             required_vars = extract_required_variables(q_info["question"])
-    #             missing_vars = required_vars - available_vars
-    #             if missing_vars:
-    #                 gap_entry = {
-    #                     "question": q_info["question"],
-    #                     "question_type": "main",
-    #                     "question_index": q_info["index"],
-    #                     "missing_variables": list(missing_vars),
-    #                     "suggested_sources": suggest_data_sources(missing_vars),
-    #                     "sub_questions": len(q_info["sub_questions"])
-    #                 }
-    #                 gaps.append(gap_entry)
-    #     else:
-    #         # For topic-based research, focus on methodological gaps
-    #         for q_info in main_questions:
-    #             gap_entry = {
-    #                 "question": q_info["question"],
-    #                 "question_type": "main",
-    #                 "question_index": q_info["index"],
-    #                 "data_requirements": suggest_data_requirements(q_info["question"]),
-    #                 "methodology_gaps": suggest_methodology(q_info["question"]),
-    #                 "sub_questions": len(q_info["sub_questions"])
-    #             }
-    #             gaps.append(gap_entry)
-                
-    #     return gaps
-    # except Exception as e:
-    #     logger.error(f"Error analyzing gaps: {e}")
-    #     return []
-
+    
 def extract_required_variables(question: str) -> set:
     """Extract potential required variables from a question"""
     # Common health and demographic variables to look for

@@ -36,12 +36,12 @@ GOOGLE_API_KEY=your_google_api_key_here
 python main.py
 
 # Or using uvicorn directly
-uvicorn app.app:create_app --host localhost --port 8000 --reload --factory
+uvicorn app.app:create_app --host localhost --port 8002 --reload --factory
 ```
 
 ### 4. Access Documentation
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
+- **Swagger UI**: http://localhost:8002/docs
+- **ReDoc**: http://localhost:8002/redoc
 
 ## 🐳 Docker Setup
 
@@ -63,7 +63,7 @@ docker-compose down
 docker build -t research-agent .
 
 # Run container
-docker run -p 8000:8000 --env-file .env research-agent
+docker run -p 8002:8002 --env-file .env research-agent
 ```
 
 ## 📋 API Endpoints
@@ -311,7 +311,7 @@ import requests
 import json
 
 class ResearchClient:
-    def __init__(self, base_url="http://localhost:8000"):
+    def __init__(self, base_url="http://localhost:8002"):
         self.base_url = base_url
     
     def complete_research(self, title, description, area_of_study, geography):
@@ -380,7 +380,7 @@ session_result = client.session_workflow(project)
 
 ```javascript
 class ResearchAPI {
-    constructor(baseUrl = 'http://localhost:8000') {
+    constructor(baseUrl = 'http://localhost:8002') {
         this.baseUrl = baseUrl;
     }
     
@@ -465,7 +465,7 @@ All successful responses include:
 
 ### Health Check
 ```bash
-curl http://localhost:8000/health
+curl http://localhost:8002/health
 ```
 
 ### API Testing
@@ -576,7 +576,7 @@ project_data = {
 }
 
 response = requests.post(
-    "http://localhost:8000/api/generate-questions", 
+    "http://localhost:8002/api/generate-questions", 
     json=project_data
 )
 
@@ -597,7 +597,7 @@ const projectData = {
     geography: "Nairobi"
 };
 
-axios.post('http://localhost:8000/api/generate-questions', projectData)
+axios.post('http://localhost:8002/api/generate-questions', projectData)
     .then(response => {
         console.log('Main Question:', response.data.main_question.text);
         response.data.sub_questions.forEach(sq => {
@@ -611,7 +611,7 @@ axios.post('http://localhost:8000/api/generate-questions', projectData)
 
 ### cURL Example
 ```bash
-curl -X POST "http://localhost:8000/api/generate-questions" \
+curl -X POST "http://localhost:8002/api/generate-questions" \
      -H "Content-Type: application/json" \
      -d '{
        "title": "Healthcare Access in Urban Areas",
@@ -655,5 +655,5 @@ For production deployment:
 
 Example production command:
 ```bash
-gunicorn fastapi_main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+gunicorn fastapi_main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8002
 ```
