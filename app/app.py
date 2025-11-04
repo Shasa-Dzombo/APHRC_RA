@@ -39,25 +39,27 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Import research workflow endpoints
+    # Import research workflow endpoints from our unified API
     from app.api import (
         get_database_overview,
-        get_table_details,
+        get_table_info,
         start_research,
-        generate_research_questions,
-        analyze_data_gaps,
-        get_ai_research_insights,
+        generate_questions,
+        analyze_subquestions,
+        analyze_selected_subquestions,
+        identify_data_gaps,
         search_literature,
         get_session_status
     )
 
     # Register research workflow endpoints
     app.get("/database/overview")(get_database_overview)
-    app.get("/database/table/{table_name}")(get_table_details)
+    app.get("/database/table/{table_name}")(get_table_info)
     app.post("/research/start")(start_research)
-    app.post("/research/questions/generate")(generate_research_questions)
-    app.post("/research/analyze/ai-insights")(get_ai_research_insights) 
-    app.post("/research/analyze/gaps")(analyze_data_gaps) 
+    app.post("/research/generate-questions")(generate_questions)
+    app.post("/analyze-subquestions")(analyze_subquestions)
+    app.post("/analyze-selected-subquestions")(analyze_selected_subquestions)
+    app.post("/identify-data-gaps")(identify_data_gaps)
     app.post("/research/literature/search")(search_literature)
     app.get("/research/session/{session_id}")(get_session_status)
 
@@ -75,11 +77,12 @@ def create_app() -> FastAPI:
                 },
                 "research": {
                     "start": "/research/start",
-                    "questions": "/research/questions/generate",
-                    "ai_insights": "/research/analyze/ai-insights",
-                    "gaps": "/research/analyze/gaps",
-                    "literature": "/research/literature/search",
-                    "session": "/research/session/{session_id}"
+                    "generate_questions": "/research/generate-questions",
+                    "analyze_subquestions": "/analyze-subquestions",
+                    "analyze_selected_subquestions": "/analyze-selected-subquestions",
+                    "identify_data_gaps": "/identify-data-gaps",
+                    "literature_search": "/research/literature/search",
+                    "session_status": "/research/session/{session_id}"
                 }
             }
         }

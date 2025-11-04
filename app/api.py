@@ -1,26 +1,27 @@
+"""
+Unified Research API with Session Management
+"""
 from fastapi import FastAPI, HTTPException, Depends
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
-from utils.database_utils import parse_database_schema, get_table_details
-from utils.research_utils import fetch_google_scholar, fetch_crossref, fetch_webpage
-from config.llm_factory import get_llm
-from app.models import (
-    AIInsightResponse,
-    SubQuestion,
-    Question,
-    QuestionResponse,
-    SessionInfo,
-    ResearchSource
-)
-from prompts import (
-    DATASET_QUESTIONS_PROMPT,
-    TOPIC_QUESTIONS_PROMPT,
-    AI_INSIGHTS_PROMPT
-)
+import json
 
-# Configure API logging
+from model.models import (
+    ProjectRequest, SessionRequest, ResearchQuestionResponse, 
+    SubQuestionMappingResponse, DataGapResponse, LiteratureResponse,
+    ResearchAnalysisResponse, LiteratureSearchRequest, ProjectInfo,
+    QuestionSelectionRequest, QuestionSelectionResponse, SelectedQuestionsListResponse,
+    SubQuestionAnalysisRequest, SubQuestionAnswer, SubQuestionAnswersResponse,
+    DatabaseSchemaResponse, TableDetailsResponse, ResearchQuestion, SubQuestionMap,
+    DataGap, LiteratureReference
+)
+from utils.database_utils import parse_database_schema, get_table_details
+from utils.research_utils import fetch_google_scholar, fetch_crossref, fetch_semantic_scholar
+from config.llm_factory import get_llm
+
+# Configure comprehensive logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -31,11 +32,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Import models from models.py
+app = FastAPI(title="Unified Research API", version="1.0.0")
 
-app = FastAPI()
+# --- Session Management (from first API structure) ---
+class SessionInfo:
+    def __init__(self, research_type: str, source_id: Optional[str] = None):
+        self.session_id = UUID()
+        self.research_type = research_type
+        self.source_id = source_id
+        self.current_step = "started"
+        self.data = {}
+        self.created_at = datetime.now()
+        self.expires_at = self.created_at + timedelta(hours=24)
 
-# --- Session Management ---
 sessions = {}
 
 async def get_active_session(session_id: UUID) -> SessionInfo:
@@ -47,52 +56,67 @@ async def get_active_session(session_id: UUID) -> SessionInfo:
         raise HTTPException(status_code=400, detail="Session expired")
     return session
 
-# --- Step 1: Database Exploration ---
-@app.get("/database/overview")
+# --- Database Exploration Endpoints ---
+@app.get("/database/overview", response_model=DatabaseSchemaResponse)
 async def get_database_overview():
     """Get an overview of all available tables and their descriptions"""
     try:
+        logger.info("Fetching database overview")
         schema = parse_database_schema()
         return schema
     except Exception as e:
+        logger.error(f"Error getting database overview: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/database/table/{table_name}")
+@app.get("/database/table/{table_name}", response_model=TableDetailsResponse)
 async def get_table_info(table_name: str):
     """Get detailed information about a specific table including columns and relationships"""
     try:
-        # Using a different name for the function to avoid naming conflict
+        logger.info(f"Fetching table details for: {table_name}")
         details = await get_table_details(table_name)
         if not details:
             raise HTTPException(status_code=404, detail="Table not found")
         return details
     except ValueError as ve:
-        # Handle specific case of table not found
+        logger.warning(f"Table not found: {table_name} - {str(ve)}")
         raise HTTPException(status_code=404, detail=str(ve))
     except Exception as e:
-        # Log unexpected errors
         logger.error(f"Error getting table details for {table_name}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error retrieving table details: {str(e)}")
 
-# --- Step 2: Start Research ---
-@app.post("/research/start", response_model=SessionInfo)
-async def start_research(source: ResearchSource):
+# --- Research Workflow Endpoints ---
+@app.post("/research/start", response_model=SessionRequest)
+async def start_research(source: ProjectRequest):
     """Start a new research session with either a topic or dataset focus"""
     try:
         logger.info(f"Starting new research session - Type: {source.source_type}, Title: {source.title}")
         
+        # Create session with research type distinction
         session = SessionInfo(
+            session_id=UUID(),
             research_type=source.source_type,
             source_id=source.table_name if source.source_type == "dataset" else None,
             current_step="started",
             data={
                 "source": source.dict(),
-            }
+                "main_questions": [],
+                "sub_questions": [], 
+                "mappings": [],
+                "data_gaps": [],
+                "literature": {},
+                "sub_question_answers": []
+            },
+            created_at=datetime.now(),
+            expires_at=datetime.now() + timedelta(hours=24)
         )
         sessions[session.session_id] = session
         
         logger.info(f"Session created successfully - ID: {session.session_id}")
-        return session
+        return SessionRequest(
+            session_id=session.session_id,
+            expires_at=session.expires_at,
+            message=f"Research session started successfully - Type: {source.source_type}"
+        )
         
     except Exception as e:
         logger.error(f"Failed to start research session: {e}")
@@ -101,109 +125,41 @@ async def start_research(source: ResearchSource):
             detail=f"Failed to start research session: {str(e)}"
         )
 
-# --- Helper Functions ---
-def parse_llm_question_response(response_text: str) -> Dict:
-    """Parse the LLM response into structured question format"""
-    lines = response_text.split('\n')
-    main_questions = []
-    current_main = None
-    current_subs = []
-    approach = ""
-    
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-            
-        if line.upper().startswith("MAIN QUESTION"):
-            # Save previous main question if exists
-            if current_main:
-                main_questions.append({
-                    "question": current_main,
-                    "sub_questions": current_subs.copy()
-                })
-            current_main = None
-            current_subs = []
-        elif line.upper().startswith("APPROACH:"):
-            approach = line.replace("APPROACH:", "").strip()
-        elif ":" in line and not line.startswith("-"):
-            current_main = line.split(":", 1)[1].strip()
-        elif line.startswith("-"):
-            if current_main:  # Only add sub-questions if we have a main question
-                sub_q = line.replace("-", "").strip()
-                current_subs.append(sub_q)
-                
-    # Add the last main question if exists
-    if current_main:
-        main_questions.append({
-            "question": current_main,
-            "sub_questions": current_subs
-        })
-        
-    # Structure the response
-    structured_questions = []
-    for idx, main in enumerate(main_questions):
-        question = {
-            "question": main["question"],
-            "sub_questions": [
-                {"question": sq, "main_question_index": idx}
-                for sq in main["sub_questions"]
-            ]
-        }
-        structured_questions.append(question)
-        
-    return {
-        "main_questions": structured_questions,
-        "approach": approach
-    }
 
-# --- Step 3: Generate Research Questions ---
-@app.post("/research/questions/generate")
-async def generate_research_questions(
-    session_id: UUID,
+@app.post("/research/generate-questions")
+async def generate_questions(
+    session_request: SessionRequest,
     session: SessionInfo = Depends(get_active_session)
 ):
-    """Generate research questions based on source type (topic or dataset)"""
+    """Generate main research questions and sub-questions"""
     try:
-        logger.info(f"Generating research questions for session {session_id}")
+        logger.info(f"Generating research questions for session {session_request.session_id}")
+        
+        # Get project info from session
+        project_data = session.data.get("project", {})
+        project_info = ProjectInfo(**project_data)
+        
+        # Use LLM to generate questions (simplified version)
         llm = get_llm()
-        source = session.data["source"]
+        prompt = f"""
+        Generate research questions for the following project:
+        Title: {project_info.title}
+        Description: {project_info.description}
+        Area of Study: {project_info.area_of_study}
+        Geography: {project_info.geography}
         
-        if session.research_type == "dataset":
-            logger.info(f"Dataset-driven research on table: {source['table_name']}")
-            table_details = get_table_details(source["table_name"])
-            if not table_details:
-                logger.error(f"Table not found: {source['table_name']}")
-                raise HTTPException(status_code=404, detail="Table not found")
-                
-            prompt = DATASET_QUESTIONS_PROMPT.format(
-                table_name=source['table_name'],
-                variables=', '.join(source['variables']),
-                description=source['description']
-            )
-        else:
-            logger.info(f"Topic-driven research on: {source['title']}")
-            prompt = TOPIC_QUESTIONS_PROMPT.format(
-                title=source['title'],
-                description=source['description'],
-                area_of_study=source.get('area_of_study', ''),
-                geography=source.get('geography', '')
-            )
+        Please provide 3-5 main research questions and 2-3 sub-questions for each main question.
+        """
         
-        logger.debug(f"Sending prompt to LLM: {prompt[:200]}...")
         response = llm.invoke(prompt)
+        questions_data = parse_llm_question_response(response.content)
         
-        if hasattr(response, 'content'):
-            response_text = response.content
-        else:
-            response_text = str(response)
-            
-        questions = parse_llm_question_response(response_text)
-        logger.info(f"Generated {len(questions.get('sub_questions', []))} sub-questions")
-        
-        session.data["questions"] = questions
+        # Store questions in session
+        session.data.update(questions_data)
         session.current_step = "questions_generated"
-        return questions
+        
+        logger.info(f"Generated {len(questions_data.get('main_questions', []))} main questions")
+        return questions_data
         
     except Exception as e:
         logger.error(f"Failed to generate research questions: {e}")
@@ -212,548 +168,238 @@ async def generate_research_questions(
             detail=f"Failed to generate research questions: {str(e)}"
         )
 
-# --- Step 4: Analyze Data Gaps ---
-@app.post("/research/analyze/gaps")
-async def analyze_gaps(
-    session_id: UUID,
+# --- Core Analysis Endpoints (from first API) ---
+@app.post("/analyze-subquestions", response_model=List[SubQuestionMappingResponse])
+async def analyze_subquestions(
+    request: SubQuestionAnalysisRequest,
     session: SessionInfo = Depends(get_active_session)
 ):
-    """Analyze gaps in data and methodology for research questions"""
+    """Analyze data requirements and analysis approaches for sub-questions"""
     try:
-        logger.info(f"Analyzing data gaps for session {session_id}")
+        logger.info(f"Analyzing sub-questions for session {request.session_id}")
         
-        if "questions" not in session.data:
-            raise HTTPException(status_code=400, detail="Generate questions first")
-        
-        questions = session.data["questions"]
-        
-        # Ensure we have main questions
-        main_questions = questions.get("main_questions", [])
-        if not main_questions:
-            raise HTTPException(status_code=400, detail="No research questions found")
-            
-        logger.info(f"Analyzing gaps for {len(main_questions)} questions")
-        
-        # Get data context based on research type
-        if session.research_type == "dataset":
-            available_data = {
-                "type": "dataset",
-                "variables": session.data["source"].get("variables", []),
-                "table": session.data["source"].get("table_name", "")
-            }
-        else:
-            available_data = {
-                "type": "topic",
-                "area": session.data["source"].get("area_of_study", ""),
-                "geography": session.data["source"].get("geography", "")
-            }
-            
-        # Analyze gaps for each main question and its sub-questions
-        gaps = []
-        for idx, main_q in enumerate(main_questions):
-            main_question = main_q.get("question", "")
-            sub_questions = main_q.get("sub_questions", [])
-            
-            # Analyze main question
-            question_gaps = analyze_question_gaps(
-                main_question,
-                available_data,
-                is_main=True,
-                question_index=idx
+        # Validate session has questions
+        if not session.data.get("main_questions") or not session.data.get("sub_questions"):
+            raise HTTPException(
+                status_code=400, 
+                detail="No questions found. Please generate questions first."
             )
-            gaps.extend(question_gaps)
+        
+        # Filter sub-questions for specified main questions
+        main_questions = session.data["main_questions"]
+        sub_questions = session.data["sub_questions"]
+        
+        filtered_subs = [
+            sq for sq in sub_questions 
+            if any(mq["id"] == sq["parent_question_id"] for mq in main_questions if mq["id"] in request.main_question_ids)
+        ]
+        
+        if not filtered_subs:
+            raise HTTPException(
+                status_code=400,
+                detail="No sub-questions found for the specified main question IDs"
+            )
+        
+        # Analyze each sub-question
+        llm = get_llm()
+        mappings = []
+        
+        for sub_q in filtered_subs:
+            prompt = f"""
+            Analyze the following research sub-question:
+            "{sub_q['text']}"
             
-            # Analyze each sub-question
-            for sub_idx, sub_q in enumerate(sub_questions):
-                sub_gaps = analyze_question_gaps(
-                    sub_q.get("question", ""),
-                    available_data,
-                    is_main=False,
-                    question_index=idx,
-                    sub_question_index=sub_idx
-                )
-                gaps.extend(sub_gaps)
+            Provide:
+            1. Data requirements (what data/variables are needed)
+            2. Analysis approach (how to analyze the data)
+            
+            Format as JSON with keys: data_requirements, analysis_approach
+            """
+            
+            response = llm.invoke(prompt)
+            analysis_data = parse_analysis_response(response.content)
+            
+            mapping = SubQuestionMap(
+                sub_question_id=sub_q["id"],
+                sub_question=sub_q["text"],
+                data_requirements=analysis_data.get("data_requirements", ""),
+                analysis_approach=analysis_data.get("analysis_approach", "")
+            )
+            mappings.append(mapping)
+        
+        # Store mappings in session
+        session.data["mappings"] = [mapping.dict() for mapping in mappings]
+        session.data["selected_main_question_ids"] = request.main_question_ids
+        session.current_step = "subquestions_analyzed"
+        
+        logger.info(f"Analyzed {len(mappings)} sub-questions")
+        return mappings
+        
+    except Exception as e:
+        logger.error(f"Failed to analyze sub-questions: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to analyze sub-questions: {str(e)}"
+        )
+
+@app.post("/analyze-selected-subquestions", response_model=SubQuestionAnswersResponse)
+async def analyze_selected_subquestions(
+    session_request: SessionRequest,
+    session: SessionInfo = Depends(get_active_session)
+):
+    """Generate comprehensive answers for analyzed sub-questions"""
+    try:
+        logger.info(f"Generating answers for sub-questions in session {session_request.session_id}")
+        
+        # Check if we have analyzed sub-questions
+        mappings = session.data.get("mappings", [])
+        if not mappings:
+            raise HTTPException(
+                status_code=400,
+                detail="No analyzed sub-questions found. Please run analyze-subquestions first."
+            )
+        
+        # Generate answers for each mapped sub-question
+        llm = get_llm()
+        answers = []
+        
+        for mapping in mappings:
+            prompt = f"""
+            Based on the following research context, provide a comprehensive answer:
+            
+            Sub-question: {mapping['sub_question']}
+            Data Requirements: {mapping['data_requirements']}
+            Analysis Approach: {mapping['analysis_approach']}
+            
+            Provide a detailed answer incorporating available data and research context.
+            """
+            
+            response = llm.invoke(prompt)
+            
+            answer = SubQuestionAnswer(
+                sub_question_id=mapping["sub_question_id"],
+                sub_question_text=mapping["sub_question"],
+                answer=response.content,
+                confidence_score=0.8,  # Could be calculated based on response quality
+                sources_used=["AI analysis based on research context"]
+            )
+            answers.append(answer)
+        
+        # Store answers in session
+        session.data["sub_question_answers"] = [answer.dict() for answer in answers]
+        session.current_step = "answers_generated"
+        
+        logger.info(f"Generated answers for {len(answers)} sub-questions")
+        
+        return SubQuestionAnswersResponse(
+            session_id=session_request.session_id,
+            answers=answers,
+            total_answered=len(answers),
+            processing_summary=f"Generated comprehensive answers for {len(answers)} sub-questions based on data requirements and analysis approaches."
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to generate sub-question answers: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate sub-question answers: {str(e)}"
+        )
+
+@app.post("/identify-data-gaps", response_model=List[DataGapResponse])
+async def identify_data_gaps(
+    session_request: SessionRequest,
+    session: SessionInfo = Depends(get_active_session)
+):
+    """Identify data gaps for analyzed sub-questions"""
+    try:
+        logger.info(f"Identifying data gaps for session {session_request.session_id}")
+        
+        # Check if we have analyzed sub-questions
+        mappings = session.data.get("mappings", [])
+        if not mappings:
+            raise HTTPException(
+                status_code=400,
+                detail="No analyzed sub-questions found. Please run analyze-subquestions first."
+            )
+        
+        # Get database schema for comparison
+        db_schema = await parse_database_schema()
+        available_variables = extract_available_variables(db_schema)
+        
+        data_gaps = []
+        
+        for mapping in mappings:
+            # Extract required variables from data requirements
+            required_vars = extract_required_variables(mapping["data_requirements"])
+            missing_vars = [var for var in required_vars if var not in available_variables]
+            
+            if missing_vars:
+                for var in missing_vars:
+                    gap = DataGap(
+                        missing_variable=var,
+                        gap_description=f"Required variable '{var}' not found in available database",
+                        suggested_sources=suggest_data_sources([var]),
+                        sub_question_id=mapping["sub_question_id"]
+                    )
+                    data_gaps.append(gap)
         
         # Store gaps in session
-        session.data["data_gaps"] = gaps
-        session.current_step = "gaps_analyzed"
+        session.data["data_gaps"] = [gap.dict() for gap in data_gaps]
+        session.current_step = "gaps_identified"
         
-        logger.info(f"Identified {len(gaps)} data gaps")
-        return gaps
-        
-    except Exception as e:
-        logger.error(f"Failed to analyze data gaps: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to analyze data gaps: {str(e)}"
-        )
-
-def analyze_question_gaps(
-    question: str,
-    available_data: Dict,
-    is_main: bool = True,
-    question_index: int = 0,
-    sub_question_index: Optional[int] = None
-) -> List[Dict]:
-    """Analyze data gaps for a specific research question"""
-    gaps = []
-    
-    # Extract key concepts and variables needed
-    required_vars = extract_required_variables(question)
-    
-    # For dataset research, compare with available variables
-    if available_data["type"] == "dataset":
-        available_vars = set(available_data["variables"])
-        missing_vars = required_vars - available_vars
-        
-        for var in missing_vars:
-            gaps.append({
-                "type": "missing_variable",
-                "variable": var,
-                "question_type": "main" if is_main else "sub",
-                "question_index": question_index,
-                "sub_question_index": sub_question_index,
-                "suggested_sources": suggest_data_sources([var]),
-                "description": f"Required variable '{var}' not available in dataset"
-            })
-    
-    # For topic research, identify potential data requirements
-    else:
-        data_reqs = suggest_data_requirements(question)
-        for req in data_reqs:
-            gaps.append({
-                "type": "data_requirement",
-                "requirement": req,
-                "question_type": "main" if is_main else "sub",
-                "question_index": question_index,
-                "sub_question_index": sub_question_index,
-                "suggested_methodology": suggest_methodology(req),
-                "description": f"Data required for analysis: {req}"
-            })
-    
-    return gaps
-
-def extract_required_variables(question: str) -> set:
-    """Extract potential required variables from a question"""
-    # Basic variable extraction - could be enhanced with NLP
-    words = question.lower().split()
-    variables = set()
-    
-    # Keywords that often precede variables
-    indicators = ["rate", "level", "status", "number", "count", "percentage", "ratio",
-                "frequency", "incidence", "prevalence", "measure", "score", "index"]
-    
-    for i, word in enumerate(words):
-        # Check if word is or follows an indicator
-        if (word in indicators or
-            (i > 0 and words[i-1] in indicators)):
-            variables.add(word)
-            
-        # Check for compound variables (e.g., "education_level")
-        if "_" in word:
-            variables.add(word)
-    
-    return variables
-
-def suggest_data_requirements(question: str) -> List[str]:
-    """Suggest data requirements for a research question"""
-    requirements = []
-    
-    # Basic patterns to identify data requirements
-    if "compare" in question.lower() or "difference" in question.lower():
-        requirements.append("Comparative data across groups")
-    if "time" in question.lower() or "period" in question.lower():
-        requirements.append("Time series data")
-    if "factor" in question.lower() or "influence" in question.lower():
-        requirements.append("Multiple variable relationships")
-    if "where" in question.lower() or "location" in question.lower():
-        requirements.append("Geographic data")
-    if "why" in question.lower() or "reason" in question.lower():
-        requirements.append("Qualitative explanatory data")
-    
-    return requirements
-
-def suggest_methodology(data_requirement: str) -> List[str]:
-    """Suggest methodological approaches"""
-    method_map = {
-        "Comparative data": [
-            "Cross-sectional analysis",
-            "Comparative case studies",
-            "Statistical hypothesis testing"
-        ],
-        "Time series data": [
-            "Longitudinal analysis",
-            "Time series modeling",
-            "Trend analysis"
-        ],
-        "Multiple variable relationships": [
-            "Regression analysis",
-            "Factor analysis",
-            "Path analysis"
-        ],
-        "Geographic data": [
-            "Spatial analysis",
-            "GIS mapping",
-            "Cluster analysis"
-        ],
-        "Qualitative explanatory data": [
-            "Thematic analysis",
-            "Content analysis",
-            "In-depth interviews"
-        ]
-    }
-    
-    # Find matching methodologies
-    methods = []
-    for key, value in method_map.items():
-        if key.lower() in data_requirement.lower():
-            methods.extend(value)
-    
-    return methods or ["General statistical analysis"]
-
-# --- Step 5: AI Research Insights ---
-@app.post("/research/analyze/ai-insights", 
-          response_model=AIInsightResponse,
-          tags=["Research Analysis"])
-async def get_ai_research_insights(
-    session_id: UUID,
-    session: SessionInfo = Depends(get_active_session)
-):
-    """
-    Provide AI-generated insights and preliminary answers for research questions.
-    Analyzes data gaps by comparing research questions with available database information.
-    
-    This endpoint:
-    1. Checks database for available data related to research questions
-    2. Identifies gaps between required and available data
-    3. Searches web sources for relevant information
-    4. Generates insights and preliminary answers
-    5. Suggests areas for further research
-    
-    Returns structured insights with data gap analysis and methodology notes.
-    """
-    try:
-        logger.info(f"Generating AI research insights for session {session_id}")
-        
-        if "questions" not in session.data:
-            raise HTTPException(status_code=400, detail="Generate questions first")
-            
-        # Get database schema for data availability check
-        db_schema = await parse_database_schema()
-        
-        # Extract questions and analyze data availability
-        questions = session.data["questions"]
-        main_questions = questions.get("main_questions", [])
-        if not main_questions:
-            raise HTTPException(status_code=400, detail="No research questions found")
-            
-        # Analyze gaps against database schema
-        data_gaps = []
-        source_data = session.data.get("source", {})
-        
-        if session.research_type == "dataset":
-            table_name = source_data.get("table_name")
-            if table_name:
-                # Get detailed table information
-                table_details = await get_table_details(table_name)
-                available_vars = set(table_details.get("columns", {}).keys())
-                
-                # Check each question against available data
-                for idx, question in enumerate(main_questions):
-                    question_text = question.get("question", "")
-                    required_vars = extract_required_variables(question_text)
-                    missing_vars = required_vars - available_vars
-                    
-                    if missing_vars:
-                        data_gaps.append({
-                            "question_index": idx,
-                            "question": question_text,
-                            "missing_variables": list(missing_vars),
-                            "available_alternatives": suggest_data_sources(missing_vars)
-                        })
-        
-        # Get the LLM instance with research-focused system prompt
-        llm = get_llm(temperature=0.7)
-        
-            # Search the web for relevant information
-        all_web_results = []
-        for question in main_questions:
-            # Make sure we're using the question text, not the dict
-            question_text = question.get("question", "")
-            if question_text:
-                web_results = await fetch_webpage(
-                    urls=[], # The tool will search automatically
-                    query=question_text
-                )
-                if web_results:
-                    all_web_results.extend(web_results)
-        
-        # Create comprehensive prompt for the LLM
-        prompt = AI_INSIGHTS_PROMPT.format(
-            main_questions=[q.get("question", "") for q in main_questions],
-            data_gaps=data_gaps,
-            web_results=all_web_results
-        )
-        
-        response = await llm.invoke(prompt)
-        
-        # Structure the insights
-        insights = {
-            "timestamp": datetime.now().isoformat(),
-            "disclaimer": """IMPORTANT: These insights are AI-generated based on available information and should be 
-                        considered preliminary. All findings should be verified through rigorous research and peer-reviewed sources.""",
-            "insights": response.content,
-            "data_gaps": data_gaps,
-            "methodology_note": """This analysis combines web-sourced information with AI interpretation. 
-                               Statistics and claims should be independently verified."""
-        }
-        
-        # Store in session for future reference
-        session.data["ai_insights"] = insights
-        
-        logger.info(f"Successfully generated AI insights for session {session_id}")
-        return insights
+        logger.info(f"Identified {len(data_gaps)} data gaps")
+        return data_gaps
         
     except Exception as e:
-        logger.error(f"Error generating AI insights: {str(e)}")
+        logger.error(f"Failed to identify data gaps: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Error generating AI insights: {str(e)}"
-        )
-    
-def extract_required_variables(question: str) -> set:
-    """Extract potential required variables from a question"""
-    # Common health and demographic variables to look for
-    common_vars = {
-        "age", "gender", "location", "education", "income", "household",
-        "health", "mortality", "morbidity", "vaccination", "treatment",
-        "symptoms", "diagnosis", "outcome", "intervention"
-    }
-    
-    # Look for these variables in the question
-    found_vars = set()
-    question_lower = question.lower()
-    
-    for var in common_vars:
-        if var in question_lower:
-            found_vars.add(var)
-            
-    # Add specific health condition variables if mentioned
-    health_conditions = {
-        "malaria", "hiv", "tuberculosis", "pneumonia", "diarrhea",
-        "malnutrition", "anemia", "diabetes", "hypertension"
-    }
-    
-    for condition in health_conditions:
-        if condition in question_lower:
-            found_vars.add(f"{condition}_status")
-            found_vars.add(f"{condition}_treatment")
-            
-    return found_vars
-
-def suggest_data_sources(variables: set) -> List[str]:
-    """Suggest potential data sources for missing variables"""
-    source_mapping = {
-        "health": ["Health Management Information System (HMIS)", "Hospital Records"],
-        "mortality": ["Civil Registration and Vital Statistics", "Health Facility Reports"],
-        "education": ["Ministry of Education Database", "School Records"],
-        "income": ["Household Economic Survey", "World Bank Development Indicators"],
-        "location": ["Geographic Information System (GIS)", "Census Data"],
-        "vaccination": ["Immunization Records", "Health Facility Data"],
-        "treatment": ["Clinical Records", "Pharmacy Data"],
-        "household": ["Demographic Health Survey", "Household Census"]
-    }
-    
-    suggestions = []
-    for var in variables:
-        for key, sources in source_mapping.items():
-            if key in var.lower():
-                suggestions.extend(sources)
-    
-    return list(set(suggestions)) if suggestions else ["No specific sources identified"]
-
-def suggest_data_requirements(question: str) -> List[str]:
-    """Suggest data requirements for a research question"""
-    requirements = []
-    question_lower = question.lower()
-    
-    # Add demographic data requirements
-    if any(term in question_lower for term in ["age", "gender", "population"]):
-        requirements.append("Demographic data (age, gender, population statistics)")
-        
-    # Add temporal data requirements
-    if any(term in question_lower for term in ["trend", "pattern", "over time", "duration"]):
-        requirements.append("Time series data with regular intervals")
-        
-    # Add geographic data requirements
-    if any(term in question_lower for term in ["region", "area", "location", "geographical"]):
-        requirements.append("Geographic and spatial data")
-        
-    # Add health data requirements
-    if any(term in question_lower for term in ["health", "disease", "condition", "symptoms"]):
-        requirements.append("Clinical and health outcome data")
-        
-    # Add default requirement if none found
-    if not requirements:
-        requirements.append("Basic demographic and health indicators")
-        
-    return requirements
-
-def suggest_methodology(question: str) -> List[str]:
-    """Suggest methodological approaches"""
-    methods = []
-    question_lower = question.lower()
-    
-    # Suggest quantitative methods
-    if any(term in question_lower for term in ["how many", "rate", "percentage", "level", "amount"]):
-        methods.append("Quantitative analysis using statistical methods")
-        methods.append("Descriptive and inferential statistical analysis")
-        
-    # Suggest qualitative methods
-    if any(term in question_lower for term in ["why", "how", "experience", "perception"]):
-        methods.append("Qualitative research through interviews or focus groups")
-        methods.append("Thematic analysis of responses")
-        
-    # Suggest mixed methods
-    if any(term in question_lower for term in ["impact", "effect", "influence", "relationship"]):
-        methods.append("Mixed methods approach combining quantitative and qualitative data")
-        methods.append("Triangulation of multiple data sources")
-        
-    # Add default method if none found
-    if not methods:
-        methods.append("Mixed methods approach with both quantitative and qualitative components")
-        
-    return methods
-
-@app.post("/research/analyze/gaps")
-async def analyze_data_gaps(
-    session_id: UUID,
-    session: SessionInfo = Depends(get_active_session)
-):
-    """Identify data gaps and analysis approach for research questions"""
-    try:
-        logger.info(f"Analyzing data gaps for session {session_id}")
-        
-        if "questions" not in session.data:
-            logger.error("Questions not found in session data")
-            raise HTTPException(status_code=400, detail="Generate questions first")
-        
-        questions = session.data["questions"]
-        if not isinstance(questions, dict):
-            logger.error("Invalid questions format in session data")
-            raise HTTPException(status_code=500, detail="Invalid questions format")
-            
-        # Get main questions
-        main_questions = questions.get("main_questions", [])
-        if not main_questions:
-            logger.error("No main questions found in session data")
-            raise HTTPException(status_code=400, detail="No main questions found")
-            
-        logger.info(f"Analyzing gaps for {len(main_questions)} main questions")
-        
-        # Get research context
-        source_data = session.data.get("source", {})
-        source_type = source_data.get("source_type", "topic")
-        
-        # Initialize available data context
-        available_data = {
-            "type": source_type,
-            "variables": source_data.get("variables", []) if source_type == "dataset" else [],
-            "table": source_data.get("table_name", "") if source_type == "dataset" else ""
-        }
-        
-        # Analyze gaps for each question
-        all_gaps = []
-        for idx, main_q in enumerate(main_questions):
-            # Analyze main question
-            main_gaps = analyze_question_gaps(
-                main_q.get("question", ""),
-                available_data,
-                is_main=True,
-                question_index=idx
-            )
-            all_gaps.extend(main_gaps)
-            
-            # Analyze sub-questions if any
-            sub_questions = main_q.get("sub_questions", [])
-            for sub_idx, sub_q in enumerate(sub_questions):
-                sub_gaps = analyze_question_gaps(
-                    sub_q.get("question", ""),
-                    available_data,
-                    is_main=False,
-                    question_index=idx,
-                    sub_question_index=sub_idx
-                )
-                all_gaps.extend(sub_gaps)
-        
-        session.data["gaps"] = all_gaps
-        session.current_step = "gaps_analyzed"
-        logger.info(f"Found {len(all_gaps)} potential gaps in research")
-        
-        return all_gaps
-    except Exception as e:
-        logger.error(f"Failed to analyze data gaps: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to analyze data gaps: {str(e)}"
+            detail=f"Failed to identify data gaps: {str(e)}"
         )
 
-# --- Step 5: Literature Search ---
+# --- Literature Search Endpoints ---
 @app.post("/research/literature/search")
 async def search_literature(
-    session_id: UUID,
+    session_request: SessionRequest,
     session: SessionInfo = Depends(get_active_session)
 ):
     """Search literature based on research questions"""
     try:
-        logger.info(f"Starting literature search for session {session_id}")
+        logger.info(f"Starting literature search for session {session_request.session_id}")
         
-        if "questions" not in session.data:
-            logger.error("No questions found in session data")
+        if not session.data.get("main_questions"):
             raise HTTPException(status_code=400, detail="Generate questions first")
         
-        questions = session.data["questions"]
-        
-        # Handle both new and legacy formats
-        if isinstance(questions.get("main_questions"), list):
-            main_questions = questions["main_questions"]
-        else:
-            main_questions = [questions.get("main_question")] if questions.get("main_question") else []
-            
-        if not main_questions:
-            logger.error("No main questions found to search literature for")
-            raise HTTPException(status_code=400, detail="No main questions found")
-            
-        logger.info(f"Searching literature for {len(main_questions)} main questions")
-        
-        # Search across multiple sources for each main question
+        main_questions = session.data["main_questions"]
         all_results = []
-        for idx, question in enumerate(main_questions):
-            logger.info(f"Searching for main question {idx + 1}: {question[:100]}...")
-            
-            # Search across multiple sources
-            question_results = []
-            google_results = await fetch_google_scholar(question)
-            crossref_results = await fetch_crossref(question)
-            
-            # Add source and question index to results
-            for result in google_results:
-                result["question_index"] = idx
-                result["source"] = "Google Scholar"
-                question_results.append(result)
+        
+        for question in main_questions:
+            question_text = question.get("text", question.get("question", ""))
+            if question_text:
+                # Search multiple sources
+                google_results = await fetch_google_scholar(question_text)
+                crossref_results = await fetch_crossref(question_text)
+                ss_results = await fetch_semantic_scholar(question_text)
                 
-            for result in crossref_results:
-                result["question_index"] = idx
-                result["source"] = "CrossRef"
-                question_results.append(result)
-                
-            all_results.extend(question_results)
-            logger.info(f"Found {len(question_results)} results for question {idx + 1}")
+                # Add source information
+                for result in google_results:
+                    result["source"] = "Google Scholar"
+                    result["question_text"] = question_text
+                    
+                for result in crossref_results:
+                    result["source"] = "CrossRef" 
+                    result["question_text"] = question_text
+
+                for result in ss_results:
+                    result["source"] = "Semantic Scholar"
+                    result["question_text"] = question_text
+                    
+                all_results.extend(google_results + crossref_results +ss_results)
         
         session.data["literature"] = all_results
-        session.current_step = "literature_found"
+        session.current_step = "literature_searched"
         
-        logger.info(f"Literature search completed. Total results: {len(all_results)}")
+        logger.info(f"Literature search completed. Found {len(all_results)} results")
         return all_results
         
     except Exception as e:
@@ -763,103 +409,124 @@ async def search_literature(
             detail=f"Literature search failed: {str(e)}"
         )
 
-# --- Utility Endpoints ---
+# --- Utility Functions ---
+def parse_llm_question_response(response_text: str) -> Dict:
+    """Parse LLM response into structured question format"""
+    # Simplified parsing - in practice, you'd want more robust parsing
+    lines = [line.strip() for line in response_text.split('\n') if line.strip()]
+    
+    main_questions = []
+    sub_questions = []
+    current_main_id = None
+    
+    for line in lines:
+        if line.lower().startswith(('main', 'primary', 'research question')):
+            # Main question
+            main_id = str(len(main_questions) + 1)
+            current_main_id = main_id
+            main_questions.append({
+                "id": main_id,
+                "text": line.split(':', 1)[-1].strip(),
+                "question_type": "main"
+            })
+        elif line.startswith('-') and current_main_id:
+            # Sub-question
+            sub_questions.append({
+                "id": f"{current_main_id}.{len([sq for sq in sub_questions if sq['parent_question_id'] == current_main_id]) + 1}",
+                "text": line[1:].strip(),
+                "question_type": "sub",
+                "parent_question_id": current_main_id
+            })
+    
+    return {
+        "main_questions": main_questions,
+        "sub_questions": sub_questions
+    }
+
+def parse_analysis_response(response_text: str) -> Dict:
+    """Parse analysis response into structured data"""
+    # Simple parsing - extract data requirements and analysis approach
+    lines = [line.strip() for line in response_text.split('\n') if line.strip()]
+    
+    data_requirements = []
+    analysis_approach = []
+    current_section = None
+    
+    for line in lines:
+        lower_line = line.lower()
+        if 'data' in lower_line and 'requirement' in lower_line:
+            current_section = 'data'
+        elif 'analysis' in lower_line and 'approach' in lower_line:
+            current_section = 'analysis'
+        elif current_section == 'data' and line:
+            data_requirements.append(line)
+        elif current_section == 'analysis' and line:
+            analysis_approach.append(line)
+    
+    return {
+        "data_requirements": ' '.join(data_requirements),
+        "analysis_approach": ' '.join(analysis_approach)
+    }
+
+def extract_available_variables(db_schema: Dict) -> List[str]:
+    """Extract available variables from database schema"""
+    variables = []
+    for table in db_schema.get("tables", []):
+        for column in table.get("columns", []):
+            variables.append(column["name"].lower())
+    return variables
+
+def extract_required_variables(data_requirements: str) -> List[str]:
+    """Extract required variables from data requirements text"""
+    # Simple extraction - look for common variable patterns
+    words = data_requirements.lower().split()
+    variables = []
+    
+    for word in words:
+        if len(word) > 3 and word not in ['data', 'variable', 'requirement']:
+            # Simple heuristic for variable names
+            if word.isalpha():
+                variables.append(word)
+    
+    return list(set(variables))
+
+def suggest_data_sources(missing_variables: List[str]) -> str:
+    """Suggest data sources for missing variables"""
+    source_mapping = {
+        "health": ["Health Management Information System", "Hospital Records"],
+        "demographic": ["Census Data", "Demographic Health Survey"],
+        "economic": ["World Bank Data", "Household Economic Survey"],
+        "geographic": ["GIS Data", "Spatial Databases"]
+    }
+    
+    suggestions = []
+    for var in missing_variables:
+        for key, sources in source_mapping.items():
+            if key in var:
+                suggestions.extend(sources)
+    
+    return ", ".join(set(suggestions)) if suggestions else "General research databases"
+
+# --- Session Management Endpoints ---
 @app.get("/research/session/{session_id}")
 async def get_session_status(
     session_id: UUID,
     session: SessionInfo = Depends(get_active_session)
 ):
     """Get current session status and data"""
-    return session
+    return {
+        "session_id": session.session_id,
+        "research_type": session.research_type,
+        "current_step": session.current_step,
+        "created_at": session.created_at.isoformat(),
+        "expires_at": session.expires_at.isoformat(),
+        "data_summary": {
+            "main_questions_count": len(session.data.get("main_questions", [])),
+            "sub_questions_count": len(session.data.get("sub_questions", [])),
+            "mappings_count": len(session.data.get("mappings", [])),
+            "data_gaps_count": len(session.data.get("data_gaps", [])),
+            "literature_count": len(session.data.get("literature", [])),
+            "answers_count": len(session.data.get("sub_question_answers", []))
+        }
+    }
 
-def parse_llm_question_response(response: str) -> Dict:
-    """Parse the LLM's response into structured question data with multiple main questions.
-    Handles various response formats and provides robust error handling.
-    """
-    try:
-        logger.debug(f"Parsing LLM response: {response[:200]}...")
-        result = {
-            "main_questions": [],
-            "sub_questions": {},  # Dictionary mapping main question index to its sub-questions
-            "approach": ""
-        }
-        
-        # Split response into sections
-        sections = response.split("\n")
-        current_main_index = None
-        current_section = None
-        
-        for line in sections:
-            line = line.strip()
-            if not line:
-                continue
-                
-            # Detect main question sections
-            if line.lower().startswith("main question"):
-                current_main_index = len(result["main_questions"])
-                current_section = "main"
-                continue
-                
-            # Detect sub-questions sections
-            elif line.lower().startswith("sub-questions"):
-                current_section = "sub"
-                if current_main_index not in result["sub_questions"]:
-                    result["sub_questions"][current_main_index] = []
-                continue
-                
-            # Detect approach section
-            elif line.lower().startswith("approach"):
-                current_section = "approach"
-                continue
-                
-            # Process content based on section
-            if current_section == "main" and line and not line.lower().startswith("sub-questions"):
-                question = line.lstrip("123456789.- ").strip()
-                if question:
-                    result["main_questions"].append(question)
-                    
-            elif current_section == "sub" and line.startswith("-"):
-                if current_main_index is not None:
-                    sub_q = line.lstrip("- ").strip()
-                    if sub_q:
-                        if current_main_index not in result["sub_questions"]:
-                            result["sub_questions"][current_main_index] = []
-                        result["sub_questions"][current_main_index].append(sub_q)
-                        
-            elif current_section == "approach":
-                if result["approach"]:
-                    result["approach"] += " " + line
-                else:
-                    result["approach"] = line.lstrip("123456789.- ").strip()
-        
-        # Validate parsed results
-        if not result["main_questions"]:
-            logger.warning("No main questions found in response")
-            # Try alternative parsing
-            parts = response.split("\n\n")
-            for part in parts:
-                if "?" in part and not part.startswith("-"):
-                    result["main_questions"].append(part.strip())
-        
-        # Ensure we have exactly 5 main questions
-        if len(result["main_questions"]) > 5:
-            result["main_questions"] = result["main_questions"][:5]
-        
-        # Ensure each main question has exactly 3 sub-questions
-        for idx in range(len(result["main_questions"])):
-            if idx not in result["sub_questions"]:
-                result["sub_questions"][idx] = []
-            if len(result["sub_questions"][idx]) > 3:
-                result["sub_questions"][idx] = result["sub_questions"][idx][:3]
-        
-        logger.info(f"Successfully parsed response: Found {len(result['main_questions'])} main questions")
-        return result
-        
-    except Exception as e:
-        logger.error(f"Failed to parse LLM response: {e}")
-        # Return a safe default with error indication
-        return {
-            "main_question": "Error parsing response",
-            "sub_questions": [],
-            "approach": f"Parser error: {str(e)}"
-        }
