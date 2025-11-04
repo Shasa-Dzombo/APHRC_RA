@@ -1,0 +1,1031 @@
+{
+  "database": {
+    "name": "aphrc_hdss_db",
+    "version": "1.0.0",
+    "last_updated": "2025-08-20",
+    "description": "HDSS database schema for Education, Amenities, and Livelihood modules at APHRC",
+    "tables": {
+      "birth_event": {
+        "description": "Birth event data including location and attendant information",
+        "columns": {
+          "birth_id": {
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
+            "nullable": false,
+            "description": "Identifier for birth id",
+            "primary_key": true
+          },
+          "individual_id": {
+            "type": "uuid NOT NULL",
+            "nullable": false,
+            "description": "Reference to individual"
+          },
+          "mother_id": {
+            "type": "uuid",
+            "nullable": true,
+            "description": "Identifier for mother id",
+            "foreign_key": {
+              "references": "individual.individual_id"
+            }
+          },
+          "birth_date": {
+            "type": "date NOT NULL",
+            "nullable": false,
+            "description": "Date of birth"
+          },
+          "birth_location": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "Birth location"
+          },
+          "attendant_type": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "Attendant type"
+          },
+          "created_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record created at timestamp"
+          },
+          "updated_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record updated at timestamp"
+          },
+          "CONSTRAINT": {
+            "type": "birth_event_mother_id_fkey FOREIGN KEY",
+            "nullable": true,
+            "description": "Constraint"
+          }
+        }
+      },
+      "death_event": {
+        "description": "Death events including cause and autopsy status",
+        "columns": {
+          "death_id": {
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
+            "nullable": false,
+            "description": "Identifier for death id",
+            "primary_key": true
+          },
+          "individual_id": {
+            "type": "uuid NOT NULL",
+            "nullable": false,
+            "description": "Reference to individual",
+            "foreign_key": {
+              "references": "individual.individual_id"
+            }
+          },
+          "death_date": {
+            "type": "date NOT NULL",
+            "nullable": false,
+            "description": "Date of death"
+          },
+          "cause_of_death": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "Cause of death"
+          },
+          "verbal_autopsy_done": {
+            "type": "boolean DEFAULT false",
+            "nullable": true,
+            "description": "Verbal autopsy done"
+          },
+          "created_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record created at timestamp"
+          },
+          "updated_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record updated at timestamp"
+          },
+          "CONSTRAINT": {
+            "type": "death_event_individual_id_fkey FOREIGN KEY",
+            "nullable": true,
+            "description": "Constraint"
+          }
+        }
+      },
+       "migration_event": {
+        "description": "Migration data capturing movement in, out, or within the site",
+        "columns": {
+          "migration_id": {
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
+            "nullable": false,
+            "description": "Identifier for migration id",
+            "primary_key": true
+          },
+          "individual_id": {
+            "type": "uuid NOT NULL",
+            "nullable": false,
+            "description": "Reference to individual",
+            "foreign_key": {
+              "references": "individual.individual_id"
+            }
+          },
+          "migration_type": {
+            "type": "character varying NOT NULL CHECK",
+            "nullable": false,
+            "description": "Migration type"
+          },
+          "from_location": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "From location"
+          },
+          "to_location": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "To location"
+          },
+          "migration_date": {
+            "type": "date NOT NULL",
+            "nullable": false,
+            "description": "Date of migration"
+          },
+          "reason": {
+            "type": "text",
+            "nullable": true,
+            "description": "Reason"
+          },
+          "created_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record created at timestamp"
+          },
+          "updated_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record updated at timestamp"
+          },
+          "CONSTRAINT": {
+            "type": "migration_event_individual_id_fkey FOREIGN KEY",
+            "nullable": true,
+            "description": "Constraint"
+          }
+        }
+      },
+      "vaccination": {
+        "description": "Vaccination records per individual including vaccine type and dose",
+        "columns": {
+          "vaccination_id": {
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
+            "nullable": false,
+            "description": "Identifier for vaccination id",
+            "primary_key": true
+          },
+          "individual_id": {
+            "type": "uuid NOT NULL",
+            "nullable": false,
+            "description": "Reference to individual",
+            "foreign_key": {
+              "references": "individual.individual_id"
+            }
+          },
+          "vaccine_type": {
+            "type": "character varying NOT NULL",
+            "nullable": false,
+            "description": "Vaccine type"
+          },
+          "dose_number": {
+            "type": "integer NOT NULL",
+            "nullable": false,
+            "description": "Dose number"
+          },
+          "administration_date": {
+            "type": "date NOT NULL",
+            "nullable": false,
+            "description": "Date of administration"
+          },
+          "age_at_vaccination_months": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Age at vaccination months"
+          },
+          "created_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record created at timestamp"
+          },
+          "updated_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record updated at timestamp"
+          },
+          "CONSTRAINT": {
+            "type": "vaccination_individual_id_fkey FOREIGN KEY",
+            "nullable": true,
+            "description": "Constraint"
+          }
+        }
+      },
+            "pregnancy": {
+        "description": "Pregnancy records for female individuals including outcome and delivery info",
+        "columns": {
+          "pregnancy_id": {
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
+            "nullable": false,
+            "description": "Identifier for pregnancy id",
+            "primary_key": true
+          },
+          "mother_id": {
+            "type": "uuid NOT NULL",
+            "nullable": false,
+            "description": "Identifier for mother id",
+            "foreign_key": {
+              "references": "individual.individual_id"
+            }
+          },
+          "outcome": {
+            "type": "character varying NOT NULL CHECK",
+            "nullable": false,
+            "description": "Outcome"
+          },
+          "delivery_date": {
+            "type": "date",
+            "nullable": true,
+            "description": "Date of delivery"
+          },
+          "birth_weight": {
+            "type": "numeric",
+            "nullable": true,
+            "description": "Birth weight"
+          },
+          "multiple_birth": {
+            "type": "boolean DEFAULT false",
+            "nullable": true,
+            "description": "Multiple birth"
+          },
+          "preterm": {
+            "type": "boolean DEFAULT false",
+            "nullable": true,
+            "description": "Preterm"
+          },
+          "full_term": {
+            "type": "boolean DEFAULT false",
+            "nullable": true,
+            "description": "Full term"
+          },
+          "neonatal_death": {
+            "type": "boolean DEFAULT false",
+            "nullable": true,
+            "description": "Neonatal death"
+          },
+          "maternal_complication": {
+            "type": "boolean DEFAULT false",
+            "nullable": true,
+            "description": "Maternal complication"
+          },
+          "c_section_type": {
+            "type": "character varying CHECK",
+            "nullable": true,
+            "description": "C section type"
+          },
+          "created_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record created at timestamp"
+          },
+          "updated_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record updated at timestamp"
+          },
+          "CONSTRAINT": {
+            "type": "pregnancy_mother_id_fkey FOREIGN KEY",
+            "nullable": true,
+            "description": "Constraint"
+          }
+        }
+      },
+      "censoring_event": {
+        "description": "Tracking of censoring events like death, migration, or study end",
+        "columns": {
+          "censoring_id": {
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
+            "nullable": false,
+            "description": "Identifier for censoring id",
+            "primary_key": true
+          },
+          "individual_id": {
+            "type": "uuid NOT NULL",
+            "nullable": false,
+            "description": "Reference to individual",
+            "foreign_key": {
+              "references": "individual.individual_id"
+            }
+          },
+          "censoring_type": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "Censoring type"
+          },
+          "censoring_date": {
+            "type": "date",
+            "nullable": true,
+            "description": "Date of censoring"
+          },
+          "reason": {
+            "type": "text",
+            "nullable": true,
+            "description": "Reason for censoring"
+          },
+          "created_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record created at timestamp"
+          },
+          "updated_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record updated at timestamp"
+          },
+          "CONSTRAINT": {
+            "type": "censoring_event_individual_id_fkey FOREIGN KEY",
+            "nullable": true,
+            "description": "Constraint"
+          }
+        }
+      },
+            "individual": {
+        "description": "Core demographic record for each individual in the HDSS population",
+        "columns": {
+          "individual_id": {
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
+            "nullable": false,
+            "description": "Reference to individual",
+            "primary_key": true
+          },
+          "household_id": {
+            "type": "integer NOT NULL",
+            "nullable": false,
+            "description": "Reference to household",
+            "foreign_key": {
+              "references": "household.household_id"
+            }
+          },
+          "auth_user_id": {
+            "type": "uuid",
+            "nullable": true,
+            "description": "Identifier for auth user id"
+          },
+          "first_name": {
+            "type": "character varying NOT NULL",
+            "nullable": false,
+            "description": "First name"
+          },
+          "last_name": {
+            "type": "character varying NOT NULL",
+            "nullable": false,
+            "description": "Last name"
+          },
+          "sex": {
+            "type": "character CHECK",
+            "nullable": true,
+            "description": "Sex"
+          },
+          "date_of_birth": {
+            "type": "date",
+            "nullable": true,
+            "description": "Date of birth"
+          },
+          "national_id": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "Identifier for national id"
+          },
+          "is_alive": {
+            "type": "boolean DEFAULT true",
+            "nullable": true,
+            "description": "Is alive"
+          },
+          "date_of_death": {
+            "type": "date",
+            "nullable": true,
+            "description": "Date of death"
+          },
+          "marital_status": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "Marital status"
+          },
+          "religion": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "Religion"
+          },
+          "ethnicity": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "Ethnicity"
+          },
+          "created_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record created at timestamp"
+          },
+          "updated_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record updated at timestamp"
+          },
+          "CONSTRAINT": {
+            "type": "individual_auth_user_id_fkey FOREIGN KEY",
+            "nullable": true,
+            "description": "Constraint"
+          }
+        }
+      },
+      "education": {
+        "description": "Educational background and enrollment status of individuals",
+        "columns": {
+          "education_id": {
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
+            "nullable": false,
+            "description": "Identifier for education id",
+            "primary_key": true
+          },
+          "individual_id": {
+            "type": "uuid NOT NULL",
+            "nullable": false,
+            "description": "Reference to individual",
+            "foreign_key": {
+              "references": "individual.individual_id"
+            }
+          },
+          "school_level": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "School level"
+          },
+          "currently_enrolled": {
+            "type": "boolean DEFAULT false",
+            "nullable": true,
+            "description": "Currently enrolled"
+          },
+          "transition_status": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "Transition status"
+          },
+          "has_ever_attended_school": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "Has ever attended school"
+          },
+          "highest_level_ever_attended": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "Highest level ever attended"
+          },
+          "highest_class_completed": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "Highest class completed"
+          },
+          "current_school_type": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "Current school type"
+          },
+          "created_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record created at timestamp"
+          },
+          "updated_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record updated at timestamp"
+          },
+          "CONSTRAINT": {
+            "type": "education_individual_id_fkey FOREIGN KEY",
+            "nullable": true,
+            "description": "Constraint"
+          }
+        }
+      },
+      "household": {
+        "description": "Household information including household code and head",
+        "columns": {
+          "household_id": {
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
+            "nullable": false,
+            "description": "Reference to household",
+            "primary_key": true
+          },
+          "dwelling_unit_id": {
+            "type": "uuid NOT NULL",
+            "nullable": false,
+            "description": "Identifier for dwelling unit id",
+            "foreign_key": {
+              "references": "dwelling_unit.dwelling_unit_id"
+            }
+          },
+          "household_code": {
+            "type": "character varying NOT NULL",
+            "nullable": false,
+            "description": "Household code"
+          },
+          "head_individual_id": {
+            "type": "uuid",
+            "nullable": true,
+            "description": "Identifier for head individual id",
+            "foreign_key": {
+              "references": "individual.individual_id"
+            }
+          },
+          "start_date": {
+            "type": "date NOT NULL",
+            "nullable": false,
+            "description": "Date of start"
+          },
+          "end_date": {
+            "type": "date",
+            "nullable": true,
+            "description": "Date of end"
+          },
+          "created_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record created at timestamp"
+          },
+          "updated_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record updated at timestamp"
+          },
+          "CONSTRAINT": {
+            "type": "fk_household_head_individual FOREIGN KEY",
+            "nullable": true,
+            "description": "Constraint"
+          }
+        }
+      },
+      "household_amenities": {
+        "description": "Household-level data on water, sanitation, electricity, and waste disposal",
+        "columns": {
+          "amenity_id": {
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
+            "nullable": false,
+            "description": "Identifier for amenity id",
+            "primary_key": true
+          },
+          "household_id": {
+            "type": "uuid NOT NULL UNIQUE",
+            "nullable": false,
+            "description": "Reference to household",
+            "foreign_key": {
+              "references": "household.household_id"
+            }
+          },
+          "water_source": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "Water source"
+          },
+          "toilet_type": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "Toilet type"
+          },
+          "electricity": {
+            "type": "boolean DEFAULT false",
+            "nullable": true,
+            "description": "Electricity availability"
+          },
+          "waste_disposal": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "Waste disposal method"
+          },
+          "created_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record created at timestamp"
+          },
+          "updated_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record updated at timestamp"
+          },
+          "CONSTRAINT": {
+            "type": "household_amenities_household_id_fkey FOREIGN KEY",
+            "nullable": true,
+            "description": "Constraint"
+          }
+        }
+      },
+      "livelihoods": {
+        "description": "Information on income sources, shocks, and household income/expenditure",
+        "columns": {
+          "livelihood_id": {
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
+            "nullable": false,
+            "description": "Identifier for livelihood id",
+            "primary_key": true
+          },
+          "household_id": {
+            "type": "uuid NOT NULL UNIQUE",
+            "nullable": false,
+            "description": "Reference to household",
+            "foreign_key": {
+              "references": "household.household_id"
+            }
+          },
+          "income_sources": {
+            "type": "text",
+            "nullable": true,
+            "description": "Income sources"
+          },
+          "monthly_income": {
+            "type": "numeric",
+            "nullable": true,
+            "description": "Monthly income"
+          },
+          "expenditure": {
+            "type": "numeric",
+            "nullable": true,
+            "description": "Monthly expenditure"
+          },
+          "shocks_experienced": {
+            "type": "text",
+            "nullable": true,
+            "description": "Shocks experienced"
+          },
+          "has_income_generating_activity": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "Has income generating activity"
+          },
+          "reason_no_iga": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "Reason for no income generating activity"
+          },
+          "type_of_iga": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "Type of income generating activity"
+          },
+          "income_30days_cash": {
+            "type": "numeric",
+            "nullable": true,
+            "description": "Cash income in last 30 days"
+          },
+          "income_30days_kind": {
+            "type": "numeric",
+            "nullable": true,
+            "description": "In-kind income in last 30 days"
+          },
+          "created_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record created at timestamp"
+          },
+          "updated_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record updated at timestamp"
+          },
+          "CONSTRAINT": {
+            "type": "livelihoods_household_id_fkey FOREIGN KEY",
+            "nullable": true,
+            "description": "Constraint"
+          }
+        }
+      },
+      "country": {
+        "description": "",
+        "columns": {
+          "country_id": {
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
+            "nullable": false,
+            "description": "Identifier for country id",
+            "primary_key": true
+          },
+          "name": {
+            "type": "character varying NOT NULL UNIQUE",
+            "nullable": false,
+            "description": "Name"
+          },
+          "code": {
+            "type": "character varying NOT NULL UNIQUE",
+            "nullable": false,
+            "description": "Code"
+          },
+          "status": {
+            "type": "boolean DEFAULT true",
+            "nullable": true,
+            "description": "Status"
+          },
+          "created_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record created at timestamp"
+          },
+          "updated_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record updated at timestamp"
+          },
+          "CONSTRAINT": {
+            "type": "country_pkey PRIMARY KEY",
+            "nullable": true,
+            "description": "Constraint"
+          }
+        }
+      },
+      "site": {
+        "description": "Research sites with geographic and administrative metadata",
+        "columns": {
+          "site_id": {
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
+            "nullable": false,
+            "description": "Reference to site",
+            "primary_key": true
+          },
+          "country_id": {
+            "type": "uuid NOT NULL",
+            "nullable": false,
+            "description": "Identifier for country id",
+            "foreign_key": {
+              "references": "country.country_id"
+            }
+          },
+          "name": {
+            "type": "character varying NOT NULL",
+            "nullable": false,
+            "description": "Name"
+          },
+          "description": {
+            "type": "text",
+            "nullable": true,
+            "description": "Description"
+          },
+          "location_name": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "Location name"
+          },
+          "latitude": {
+            "type": "numeric",
+            "nullable": true,
+            "description": "Latitude"
+          },
+          "longitude": {
+            "type": "numeric",
+            "nullable": true,
+            "description": "Longitude"
+          },
+          "address": {
+            "type": "text",
+            "nullable": true,
+            "description": "Address"
+          },
+          "start_date": {
+            "type": "date NOT NULL",
+            "nullable": false,
+            "description": "Date of start"
+          },
+          "end_date": {
+            "type": "date",
+            "nullable": true,
+            "description": "Date of end"
+          },
+          "created_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record created at timestamp"
+          },
+          "updated_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record updated at timestamp"
+          },
+          "CONSTRAINT": {
+            "type": "site_country_id_fkey FOREIGN KEY",
+            "nullable": true,
+            "description": "Constraint"
+          }
+        }
+      },
+       "dwelling_unit": {
+        "description": "Dwelling units within structures and their codes",
+        "columns": {
+          "dwelling_unit_id": {
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
+            "nullable": false,
+            "description": "Identifier for dwelling unit id",
+            "primary_key": true
+          },
+          "structure_id": {
+            "type": "uuid NOT NULL",
+            "nullable": false,
+            "description": "Identifier for structure id",
+            "foreign_key": {
+              "references": "structure.structure_id"
+            }
+          },
+          "unit_code": {
+            "type": "character varying NOT NULL",
+            "nullable": false,
+            "description": "Unit code"
+          },
+          "unit_name": {
+            "type": "character varying NOT NULL",
+            "nullable": false,
+            "description": "Unit name"
+          },
+          "created_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record created at timestamp"
+          },
+          "updated_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record updated at timestamp"
+          },
+          "CONSTRAINT": {
+            "type": "dwelling_unit_structure_id_fkey FOREIGN KEY",
+            "nullable": true,
+            "description": "Constraint"
+          }
+        }
+      },
+      "village": {
+        "description": "Village-level geographic units within study sites",
+        "columns": {
+          "village_id": {
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
+            "nullable": false,
+            "description": "Identifier for village id",
+            "primary_key": true
+          },
+          "site_id": {
+            "type": "uuid NOT NULL",
+            "nullable": false,
+            "description": "Reference to site",
+            "foreign_key": {
+              "references": "site.site_id"
+            }
+          },
+          "name": {
+            "type": "character varying NOT NULL",
+            "nullable": false,
+            "description": "Name"
+          },
+          "created_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record created at timestamp"
+          },
+          "updated_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record updated at timestamp"
+          },
+          "CONSTRAINT": {
+            "type": "village_site_id_fkey FOREIGN KEY",
+            "nullable": true,
+            "description": "Constraint"
+          }
+        }
+      },
+       "structure": {
+        "description": "Structures in villages representing physical housing units",
+        "columns": {
+          "structure_id": {
+            "type": "uuid NOT NULL DEFAULT gen_random_uuid()",
+            "nullable": false,
+            "description": "Identifier for structure id",
+            "primary_key": true
+          },
+          "village_id": {
+            "type": "uuid NOT NULL",
+            "nullable": false,
+            "description": "Identifier for village id",
+            "foreign_key": {
+              "references": "village.village_id"
+            }
+          },
+          "structure_code": {
+            "type": "character varying NOT NULL",
+            "nullable": false,
+            "description": "Structure code"
+          },
+          "structure_name": {
+            "type": "character varying",
+            "nullable": true,
+            "description": "Structure name"
+          },
+          "address_description": {
+            "type": "text",
+            "nullable": true,
+            "description": "Address description"
+          },
+          "created_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record created at timestamp"
+          },
+          "updated_at": {
+            "type": "timestamp with time zone DEFAULT now",
+            "nullable": true,
+            "description": "Record updated at timestamp"
+          },
+          "CONSTRAINT": {
+            "type": "structure_village_id_fkey FOREIGN KEY",
+            "nullable": true,
+            "description": "Constraint"
+          }
+        }
+      }
+    },
+    "relationships": {
+      "individual_household": {
+        "type": "many_to_one",
+        "from": "individual.household_id",
+        "to": "household.household_id"
+      },
+      "household_dwelling": {
+        "type": "many_to_one", 
+        "from": "household.dwelling_unit_id",
+        "to": "dwelling_unit.dwelling_unit_id"
+      },
+      "dwelling_structure": {
+        "type": "many_to_one",
+        "from": "dwelling_unit.structure_id", 
+        "to": "structure.structure_id"
+      },
+      "structure_village": {
+        "type": "many_to_one",
+        "from": "structure.village_id",
+        "to": "village.village_id"
+      },
+      "village_site": {
+        "type": "many_to_one",
+        "from": "village.site_id",
+        "to": "site.site_id"
+      },
+      "site_country": {
+        "type": "many_to_one",
+        "from": "site.country_id",
+        "to": "country.country_id"
+      },
+      "education_individual": {
+        "type": "many_to_one",
+        "from": "education.individual_id",
+        "to": "individual.individual_id"
+      },
+      "pregnancy_mother": {
+        "type": "many_to_one",
+        "from": "pregnancy.mother_id", 
+        "to": "individual.individual_id"
+      },
+      "birth_individual": {
+        "type": "one_to_one",
+        "from": "birth_event.individual_id",
+        "to": "individual.individual_id"
+      },
+      "birth_mother": {
+        "type": "many_to_one",
+        "from": "birth_event.mother_id",
+        "to": "individual.individual_id"
+      },
+      "death_individual": {
+        "type": "one_to_one",
+        "from": "death_event.individual_id",
+        "to": "individual.individual_id"
+      },
+      "migration_individual": {
+        "type": "many_to_one",
+        "from": "migration_event.individual_id",
+        "to": "individual.individual_id"
+      },
+      "vaccination_individual": {
+        "type": "many_to_one",
+        "from": "vaccination.individual_id",
+        "to": "individual.individual_id"
+      },
+      "censoring_individual": {
+        "type": "many_to_one",
+        "from": "censoring_event.individual_id",
+        "to": "individual.individual_id"
+      },
+      "livelihoods_household": {
+        "type": "one_to_one",
+        "from": "livelihoods.household_id",
+        "to": "household.household_id"
+      },
+      "amenities_household": {
+        "type": "one_to_one",
+        "from": "household_amenities.household_id",
+        "to": "household.household_id"
+      }
+    }
+  }
+}
