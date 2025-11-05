@@ -58,45 +58,21 @@ For each sub-question, provide:
 
 IMPORTANT: Keep data requirements and analysis approach completely separate.
 
-Format your response EXACTLY as follows:
-
-RESEARCH QUESTION: What is the relationship between physical activity levels and cancer incidence in different demographic groups?
-
-DATA REQUIREMENTS:
-- Age group data (categorical)
-- Gender data (binary: male or female)
-- Geographical region data (categorical)
-- Physical activity level data (continuous or categorical)
-- Cancer incidence data (binary: presence or absence of cancer)
+Format your response as plain text like this:
+SUB-QUESTION: [Text of first sub-question]
+DATA REQUIREMENTS: 
+[List all required variables and data sources needed to answer this question]
 
 ANALYSIS APPROACH:
-- Pearson's correlation or Spearman's rank correlation to examine relationships
-- Multiple linear regression or logistic regression
-- Control for potential confounders (age, gender, region)
-- Statistical significance testing (p < 0.05)
+[Describe the specific analytical methods to be used with the data]
 
-===
-
-RESEARCH QUESTION: What types of physical activities are most prevalent in different population segments?
-
+SUB-QUESTION: [Text of second sub-question]
 DATA REQUIREMENTS:
-- Age group data (categorical)
-- Gender data (binary)
-- Geographical region data (categorical)
-- Physical activity type data (categorical)
-- Activity frequency data (continuous or ordinal)
+[List all required variables and data sources needed to answer this question]
 
 ANALYSIS APPROACH:
-- Descriptive statistics for activity distribution
-- Chi-square tests for categorical comparisons
-- ANOVA for comparing activity levels
-- Post-hoc testing for significant differences
-
-=== 
-
-(Continue this format for each sub-question)
-
-Ensure each question is clearly stated and that data requirements and analysis approach are logically connected to answering that specific question."""
+[Describe the specific analytical methods to be used with the data]
+"""
 
 PROMPT_STEP4 = """You are a data gap analyst specializing in research methodology.
 Your task is to carefully analyze each research sub-question and identify SPECIFIC DATA VARIABLES that are missing but necessary to answer the question.
