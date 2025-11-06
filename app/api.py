@@ -345,18 +345,52 @@ async def analyze_selected_subquestions(
                 analysis_approach=mapping['analysis_approach']
             )
             
-            # Add research context
+            # Get parent question for context
+            parent_question = None
+            for mq in session.data.get("main_questions", []):
+                sq_list = [sq for sq in session.data.get("sub_questions", []) 
+                          if sq.get("parent_question_id") == mq.get("id")]
+                if any(sq.get("id") == mapping["sub_question_id"] for sq in sq_list):
+                    parent_question = mq.get("text")
+                    break
+
+            # Add research context with both high-level and specific context
             if source_type == "dataset":
-                context = f"Dataset Context: {source_data.get('table_name')} - {source_data.get('description')}\n\n"
+                context = (f"Dataset Context: {source_data.get('table_name')} - {source_data.get('description')}\n"
+                          f"Main Research Question: {parent_question}\n"
+                          f"Specific Sub-Question to Answer: {mapping['sub_question']}\n\n")
             else:
-                context = f"Research Context: {source_data.get('title')} - {source_data.get('description')}\n\n"
+                context = (f"Research Context: {source_data.get('title')} - {source_data.get('description')}\n"
+                          f"Main Research Question: {parent_question}\n"
+                          f"Specific Sub-Question to Answer: {mapping['sub_question']}\n\n")
             
-            full_prompt = context + prompt
+            # Build prompt with explicit focus instructions
+            focused_prompt = f"""IMPORTANT: Your task is to analyze and answer ONLY this specific sub-question:
+"{mapping['sub_question']}"
+
+This sub-question is part of the larger research question:
+"{parent_question}"
+
+Ensure your answer:
+1. ONLY addresses this specific sub-question
+2. Does NOT discuss other questions or topics
+3. Is specific to the exact relationship or factor being asked about
+4. Uses the provided data requirements and analysis approach
+
+{prompt}"""
+            
+            full_prompt = context + focused_prompt
+            
+            logger.info("\n=== Processing Sub-Question ===")
+            logger.info("Sub-Question: %s", mapping['sub_question'])
+            logger.info("Context: %s", context.strip())
             
             response = llm.invoke(full_prompt)
+            logger.info("\n=== Raw LLM Response ===\n%s\n=== End Raw Response ===\n", response.content)
             
             # Format the response content
             formatted_content = format_answer_content(response.content)
+            logger.info("\n=== Formatted Response ===\n%s\n=== End Formatted Response ===\n", formatted_content)
             
             answer = SubQuestionAnswer(
                 sub_question_id=mapping["sub_question_id"],
@@ -366,6 +400,13 @@ async def analyze_selected_subquestions(
                 sources_used=[f"{source_type.capitalize()} research analysis", "Evidence-based synthesis"]
             )
             answers.append(answer)
+            
+            # Log each section separately for verification
+            sections = formatted_content.split("\n\n")
+            logger.info("\n=== Answer Sections ===")
+            for section in sections:
+                if "**" in section:  # Only log actual sections
+                    logger.info("\n%s", section)
         
         # Store answers in session
         session.data["sub_question_answers"] = [answer.dict() for answer in answers]

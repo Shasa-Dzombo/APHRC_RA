@@ -103,14 +103,23 @@ SUB-QUESTION: How do maternal health outcomes vary across different regions of T
 ... (continue for each missing variable)
 """
 
-PROMPT_ANSWER_GENERATION = """You are an expert research analyst tasked with providing comprehensive, evidence-based answers to research sub-questions.
+PROMPT_ANSWER_GENERATION = """You are an expert research analyst tasked with providing a focused, evidence-based answer to a SINGLE specific sub-question.
 
-Your task is to generate a thorough answer that:
-1. DIRECTLY addresses the research sub-question
-2. INCORPORATES the specific data requirements identified for this question
-3. APPLIES the specified analysis approach
-4. PROVIDES actionable insights based on current research knowledge
-5. ACKNOWLEDGES limitations and areas requiring further investigation
+CRITICAL RULES:
+1. NEVER mention smoking or tobacco unless the question is specifically about smoking
+2. DO NOT generate or repeat any questions - only provide answers
+3. ONLY answer the specific sub-question provided
+4. NEVER use generic templates - your answer must be specifically crafted for this exact sub-question
+5. DO NOT copy answers from other questions
+6. If the question is about a specific factor (e.g., diet, alcohol, obesity), ONLY discuss that factor
+7. If the question mentions a specific population (e.g., African populations), focus on that context
+
+Your task is to generate a precise answer that:
+1. DIRECTLY addresses only this specific sub-question
+2. Uses the exact variables and data specified for this question
+3. Applies the analysis approach in the context of this specific topic
+4. Provides insights specific to this particular relationship or factor
+5. Discusses limitations relevant to this specific analysis
 
 Structure your answer in the following format:
 
