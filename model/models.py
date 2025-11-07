@@ -3,8 +3,9 @@ Unified Pydantic Models for Research API
 """
 from pydantic import BaseModel, Field, validator
 from typing import List, Optional, Dict, Any
-from datetime import datetime, timedelta
-from uuid import UUID, uuid4
+from datetime import datetime
+import uuid
+from uuid import UUID
 
 # --- Core Research Models ---
 class ProjectInfo(BaseModel):
@@ -29,7 +30,7 @@ class ResearchSource(BaseModel):
     geography: Optional[str] = None
 
 class ResearchQuestion(BaseModel):
-    id: str = Field(default_factory=lambda: str(uuid4()))
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     text: str
     question_type: str
     parent_question_id: Optional[str] = None
@@ -56,20 +57,20 @@ class SubQuestionMap(BaseModel):
     analysis_approach: str
 
 class ResearchVariable(BaseModel):
-    id: str = Field(default_factory=lambda: str(uuid4()))
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
     description: Optional[str] = None
     sub_question_id: str
 
 class DataGap(BaseModel):
-    id: str = Field(default_factory=lambda: str(uuid4()))
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     missing_variable: str
     gap_description: str
     suggested_sources: str
     sub_question_id: str
 
 class LiteratureReference(BaseModel):
-    id: str = Field(default_factory=lambda: str(uuid4()))
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     title: str
     authors: List[str] = []
     abstract: str = ""
@@ -93,19 +94,13 @@ class HierarchicalLiterature(BaseModel):
 
 # --- Session Models ---
 class SessionInfo(BaseModel):
-    session_id: UUID = Field(default_factory=uuid4)
+    session_id: UUID
     research_type: str
     source_id: Optional[str] = None
-    current_step: str = "started"
-    data: Dict[str, Any] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    expires_at: datetime = Field(default_factory=lambda: datetime.utcnow() + timedelta(hours=24))
-
-    @validator("expires_at", pre=True, always=True)
-    def set_expires_at(cls, v, values):
-        if v is None and "created_at" in values:
-            return values["created_at"] + timedelta(hours=24)
-        return v
+    current_step: str
+    data: Dict[str, Any]
+    created_at: datetime
+    expires_at: datetime
 
 class SessionResponse(BaseModel):
     session_id: UUID
@@ -145,7 +140,6 @@ class TableDetailsResponse(BaseModel):
 
 # --- Request Models ---
 class ProjectRequest(BaseModel):
-    source_type: str  # "dataset" or "topic"
     title: str
     description: str
     area_of_study: Optional[str] = None
@@ -153,10 +147,7 @@ class ProjectRequest(BaseModel):
     custom_sub_questions: Optional[List[str]] = []
 
 class SessionRequest(BaseModel):
-    session_id: UUID = Field(
-        ...,  # ... means the field is required
-        example="123e4567-e89b-12d3-a456-426614174000"  # Custom example for documentation
-    )
+    session_id: UUID
 
 class LiteratureSearchRequest(BaseModel):
     query: str
