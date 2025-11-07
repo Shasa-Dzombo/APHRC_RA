@@ -51,6 +51,9 @@ class SubQuestionMap(BaseModel):
     sub_question: str
     data_requirements: str
     analysis_approach: str
+    sub_question: str
+    data_requirements: str
+    analysis_approach: str
 
 class ResearchVariable(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))

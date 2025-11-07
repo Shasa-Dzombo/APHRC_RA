@@ -340,9 +340,9 @@ async def analyze_selected_subquestions(
         for mapping in mappings:
             # Use the enhanced answer generation prompt
             prompt = PROMPT_ANSWER_GENERATION.format(
-                sub_question=mapping['sub_question'],
-                data_requirements=mapping['data_requirements'],
-                analysis_approach=mapping['analysis_approach']
+                sub_question=mapping.sub_question,
+                data_requirements=mapping.data_requirements,
+                analysis_approach=mapping.analysis_approach
             )
             
             # Get parent question for context
@@ -350,7 +350,7 @@ async def analyze_selected_subquestions(
             for mq in session.data.get("main_questions", []):
                 sq_list = [sq for sq in session.data.get("sub_questions", []) 
                           if sq.get("parent_question_id") == mq.get("id")]
-                if any(sq.get("id") == mapping["sub_question_id"] for sq in sq_list):
+                if any(sq.get("id") == mapping.sub_question_id for sq in sq_list):
                     parent_question = mq.get("text")
                     break
 
@@ -358,15 +358,15 @@ async def analyze_selected_subquestions(
             if source_type == "dataset":
                 context = (f"Dataset Context: {source_data.get('table_name')} - {source_data.get('description')}\n"
                           f"Main Research Question: {parent_question}\n"
-                          f"Specific Sub-Question to Answer: {mapping['sub_question']}\n\n")
+                          f"Specific Sub-Question to Answer: {mapping.sub_question}\n\n")
             else:
                 context = (f"Research Context: {source_data.get('title')} - {source_data.get('description')}\n"
                           f"Main Research Question: {parent_question}\n"
-                          f"Specific Sub-Question to Answer: {mapping['sub_question']}\n\n")
+                          f"Specific Sub-Question to Answer: {mapping.sub_question}\n\n")
             
             # Build prompt with explicit focus instructions
             focused_prompt = f"""IMPORTANT: Your task is to analyze and answer ONLY this specific sub-question:
-"{mapping['sub_question']}"
+"{mapping.sub_question}"
 
 This sub-question is part of the larger research question:
 "{parent_question}"
@@ -382,7 +382,7 @@ Ensure your answer:
             full_prompt = context + focused_prompt
             
             logger.info("\n=== Processing Sub-Question ===")
-            logger.info("Sub-Question: %s", mapping['sub_question'])
+            logger.info("Sub-Question: %s", mapping.sub_question)
             logger.info("Context: %s", context.strip())
             
             response = llm.invoke(full_prompt)
@@ -393,8 +393,8 @@ Ensure your answer:
             logger.info("\n=== Formatted Response ===\n%s\n=== End Formatted Response ===\n", formatted_content)
             
             answer = SubQuestionAnswer(
-                sub_question_id=mapping["sub_question_id"],
-                sub_question_text=mapping["sub_question"],
+                sub_question_id=mapping.sub_question_id,
+                sub_question_text=mapping.sub_question,
                 answer=formatted_content,
                 confidence_score=calculate_confidence_score(formatted_content),
                 sources_used=[f"{source_type.capitalize()} research analysis", "Evidence-based synthesis"]
@@ -457,8 +457,8 @@ async def identify_data_gaps(
         # Prepare sub-questions and data requirements for the prompt
         gap_analysis_input = ""
         for mapping in mappings:
-            gap_analysis_input += f"SUB-QUESTION: {mapping['sub_question']}\n"
-            gap_analysis_input += f"DATA REQUIREMENTS: {mapping['data_requirements']}\n\n"
+            gap_analysis_input += f"SUB-QUESTION: {mapping.sub_question}\n"
+            gap_analysis_input += f"DATA REQUIREMENTS: {mapping.data_requirements}\n\n"
         
         # Add research context
         if source_type == "dataset":

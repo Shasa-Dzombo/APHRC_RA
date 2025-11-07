@@ -1,2 +1,4 @@
 /.env
 /APHRC
+__pycache__/
+*.pyc
